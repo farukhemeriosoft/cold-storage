@@ -8,49 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // Drop all foreign key constraints first (only if they exist)
-        if (Schema::hasTable('basket_histories')) {
-            Schema::table('basket_histories', function (Blueprint $table) {
-                if (Schema::hasColumn('basket_histories', 'basket_id')) {
-                    try { $table->dropForeign(['basket_id']); } catch (\Exception $e) {}
-                }
-                if (Schema::hasColumn('basket_histories', 'batch_id')) {
-                    try { $table->dropForeign(['batch_id']); } catch (\Exception $e) {}
-                }
-                if (Schema::hasColumn('basket_histories', 'customer_id')) {
-                    try { $table->dropForeign(['customer_id']); } catch (\Exception $e) {}
-                }
-            });
-        }
-
-        if (Schema::hasTable('baskets')) {
-            Schema::table('baskets', function (Blueprint $table) {
-                if (Schema::hasColumn('baskets', 'batch_id')) {
-                    try { $table->dropForeign(['batch_id']); } catch (\Exception $e) {}
-                }
-                if (Schema::hasColumn('baskets', 'customer_id')) {
-                    try { $table->dropForeign(['customer_id']); } catch (\Exception $e) {}
-                }
-            });
-        }
-
-        if (Schema::hasTable('batches')) {
-            Schema::table('batches', function (Blueprint $table) {
-                if (Schema::hasColumn('batches', 'customer_id')) {
-                    try { $table->dropForeign(['customer_id']); } catch (\Exception $e) {}
-                }
-            });
-        }
-
-        if (Schema::hasTable('invoices')) {
-            Schema::table('invoices', function (Blueprint $table) {
-                if (Schema::hasColumn('invoices', 'customer_id')) {
-                    try { $table->dropForeign(['customer_id']); } catch (\Exception $e) {}
-                }
-            });
-        }
-
-        // Drop and recreate tables with integer IDs
+        // Simply drop and recreate all tables with integer IDs
         Schema::dropIfExists('basket_histories');
         Schema::dropIfExists('baskets');
         Schema::dropIfExists('batches');
@@ -114,7 +72,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        // This migration is not reversible due to data loss
         Schema::dropIfExists('basket_histories');
         Schema::dropIfExists('baskets');
         Schema::dropIfExists('batches');
