@@ -2,11 +2,11 @@
 
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', function () {
-    return view('welcome');
-});
-
 // Serve frontend for all non-API routes
-Route::get('/{any}', function () {
-    return file_get_contents(public_path('frontend/index.html'));
+Route::get('/{any?}', function () {
+    $frontendPath = public_path('frontend/index.html');
+    if (file_exists($frontendPath)) {
+        return file_get_contents($frontendPath);
+    }
+    return response('Frontend not built. Run: npm run frontend:build', 404);
 })->where('any', '^(?!api).*$');

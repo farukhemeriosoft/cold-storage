@@ -11,6 +11,7 @@ use App\Models\Batch;
 use App\Models\BasketHistory;
 use App\Models\Customer;
 use App\Models\Invoice;
+use App\Http\Controllers\InvoiceController;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 
@@ -18,9 +19,15 @@ class BasketController extends Controller
 {
     public function index(): JsonResponse
     {
-        $batches = Batch::with(['customer', 'baskets'])
+        $batches = Batch::with(['customer', 'baskets', 'room', 'floor', 'zone'])
             ->orderBy('created_at', 'desc')
-            ->get();
+            ->get()
+            ->map(function ($batch) {
+                $batch->expiry_status = $batch->getExpiryStatus();
+                $batch->days_until_expiry = $batch->getDaysUntilExpiry();
+                $batch->storage_location = $batch->getStorageLocation();
+                return $batch;
+            });
 
         return response()->json([
             'message' => 'Batches retrieved successfully',
@@ -32,19 +39,49 @@ class BasketController extends Controller
     {
         $validated = $request->validated();
 
-        $batch = new Batch([
-            'customer_id' => $validated['customer_id'],
-            'unit_price' => $validated['unit_price'],
-            'total_baskets' => 0,
-            'total_weight' => 0,
-            'total_value' => 0,
-        ]);
-        $batch->save();
+        try {
+            DB::beginTransaction();
 
-        return response()->json([
-            'message' => 'Batch created successfully',
-            'data' => $batch->load('customer'),
-        ], 201);
+            $batch = new Batch([
+                'customer_id' => $validated['customer_id'],
+                'room_id' => $validated['room_id'],
+                'floor_id' => $validated['floor_id'],
+                'zone_id' => $validated['zone_id'],
+                'unit_price' => $validated['unit_price'],
+                'total_baskets' => 0,
+                'total_weight' => 0,
+                'total_value' => 0,
+                'expiry_date' => now()->addYear(), // 12 months from creation
+                'can_dispatch' => false, // Cannot dispatch until invoice is paid
+                'status' => 'active',
+            ]);
+            $batch->save();
+
+            // Create invoice for the batch
+            $invoiceController = new InvoiceController();
+            $invoiceResponse = $invoiceController->createForBatch($batch);
+
+            if ($invoiceResponse->getStatusCode() !== 201) {
+                throw new \Exception('Failed to create invoice for batch');
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Batch created successfully with invoice',
+                'data' => [
+                    'batch' => $batch->load(['customer', 'room', 'floor', 'zone']),
+                    'invoice' => $invoiceResponse->getData()->data
+                ],
+            ], 201);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'message' => 'Failed to create batch',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     public function addBasketsToBatch(AddBasketsToBatchRequest $request): JsonResponse
@@ -125,11 +162,20 @@ class BasketController extends Controller
         $validated = $request->validated();
 
         return DB::transaction(function () use ($validated) {
-            $batch = Batch::with(['customer', 'baskets'])->findOrFail($validated['batch_id']);
+            $batch = Batch::with(['customer', 'baskets', 'invoice'])->findOrFail($validated['batch_id']);
 
             if ($batch->baskets->isEmpty()) {
                 return response()->json([
                     'message' => 'No baskets found in this batch to dispatch.',
+                ], 422);
+            }
+
+            // Check if invoice is paid
+            if (!$batch->can_dispatch) {
+                return response()->json([
+                    'message' => 'Cannot dispatch batch. Invoice must be paid first.',
+                    'invoice_status' => $batch->invoice ? $batch->invoice->status : 'No invoice found',
+                    'can_dispatch' => $batch->can_dispatch
                 ], 422);
             }
 
@@ -185,6 +231,41 @@ class BasketController extends Controller
                 ],
             ]);
         });
+    }
+
+    public function getExpiringBatches(): JsonResponse
+    {
+        $expiringBatches = Batch::with(['customer', 'baskets'])
+            ->expiringSoon(30) // Within 30 days
+            ->orderBy('expiry_date', 'asc')
+            ->get()
+            ->map(function ($batch) {
+                $batch->expiry_status = $batch->getExpiryStatus();
+                $batch->days_until_expiry = $batch->getDaysUntilExpiry();
+                return $batch;
+            });
+
+        $expiredBatches = Batch::with(['customer', 'baskets'])
+            ->expired()
+            ->orderBy('expiry_date', 'asc')
+            ->get()
+            ->map(function ($batch) {
+                $batch->expiry_status = $batch->getExpiryStatus();
+                $batch->days_until_expiry = $batch->getDaysUntilExpiry();
+                return $batch;
+            });
+
+        return response()->json([
+            'message' => 'Expiring batches retrieved successfully',
+            'data' => [
+                'expiring_soon' => $expiringBatches,
+                'expired' => $expiredBatches,
+                'summary' => [
+                    'expiring_count' => $expiringBatches->count(),
+                    'expired_count' => $expiredBatches->count(),
+                ]
+            ]
+        ]);
     }
 }
 

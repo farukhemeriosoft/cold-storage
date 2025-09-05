@@ -5,11 +5,11 @@
 echo "🚀 Starting Cold Storage Development Environment..."
 
 # Check if Laravel server is already running
-if lsof -Pi :8001 -sTCP:LISTEN -t >/dev/null ; then
-    echo "✅ Laravel server already running on port 8001"
+if lsof -Pi :8000 -sTCP:LISTEN -t >/dev/null ; then
+    echo "✅ Laravel server already running on port 8000"
 else
-    echo "🔄 Starting Laravel server on port 8001..."
-    php artisan serve --port=8001 &
+    echo "🔄 Starting Laravel server on port 8000..."
+    php artisan serve --port=8000 &
     LARAVEL_PID=$!
     echo "Laravel PID: $LARAVEL_PID"
 fi
@@ -29,8 +29,8 @@ fi
 echo ""
 echo "🎉 Development servers started!"
 echo "📱 Frontend: http://localhost:3000"
-echo "🔧 Backend API: http://127.0.0.1:8001"
-echo "🌐 Full App: http://127.0.0.1:8001 (serves frontend + API)"
+echo "🔧 Backend API: http://127.0.0.1:8000"
+echo "🌐 Full App: http://127.0.0.1:8000 (serves frontend + API)"
 echo ""
 echo "Press Ctrl+C to stop all servers"
 
