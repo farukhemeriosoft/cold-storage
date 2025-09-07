@@ -4,8 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\CreateBatchRequest;
 use App\Http\Requests\AddBasketsToBatchRequest;
-use App\Http\Requests\DispatchBasketRequest;
-use App\Http\Requests\DispatchBatchRequest;
 use App\Models\Basket;
 use App\Models\Batch;
 use App\Models\BasketHistory;
@@ -112,126 +110,39 @@ class BasketController extends Controller
             'total_value' => $totalValue,
         ]);
 
+        // Update the invoice with new values
+        $invoice = Invoice::where('batch_id', $batch->id)->first();
+        if ($invoice) {
+            $taxAmount = 0; // You can add tax calculation here
+            $totalAmount = $totalValue + $taxAmount;
+
+            $invoice->update([
+                'subtotal' => $totalValue,
+                'tax_amount' => $taxAmount,
+                'total_amount' => $totalAmount,
+                'balance_due' => $totalAmount - $invoice->paid_amount,
+            ]);
+
+            // Update invoice items
+            $invoice->items()->delete(); // Remove old items
+            $invoice->items()->create([
+                'description' => "Cold Storage Charges - Lot #{$batch->id}",
+                'quantity' => $newBasketCount,
+                'unit_price' => $batch->unit_price,
+                'total_price' => $totalValue,
+            ]);
+        }
+
         return response()->json([
             'message' => 'Baskets added to batch successfully',
             'data' => [
                 'batch' => $batch->fresh(),
                 'added_baskets' => $created,
+                'invoice' => $invoice ? $invoice->fresh() : null,
             ],
         ], 201);
     }
 
-    public function dispatch(DispatchBasketRequest $request): JsonResponse
-    {
-        $validated = $request->validated();
-
-        return DB::transaction(function () use ($validated) {
-            $basket = Basket::with(['customer','batch'])->where('barcode', $validated['barcode'])->firstOrFail();
-
-            $totalAmount = (float) $basket->batch->unit_price;
-
-            $invoice = Invoice::create([
-                'customer_id' => $basket->customer_id,
-                'barcode' => $basket->barcode,
-                'unit_price' => $basket->batch->unit_price,
-                'total_amount' => $totalAmount,
-            ]);
-
-            BasketHistory::create([
-                'basket_id' => $basket->id,
-                'customer_id' => $basket->customer_id,
-                'batch_id' => $basket->batch_id,
-                'barcode' => $basket->barcode,
-                'unit_price' => $basket->batch->unit_price,
-                'dispatched_at' => now(),
-            ]);
-
-            $basket->delete();
-
-            return response()->json([
-                'message' => 'Basket dispatched. Invoice generated.',
-                'data' => [
-                    'invoice' => $invoice->load('customer'),
-                ],
-            ]);
-        });
-    }
-
-    public function dispatchBatch(DispatchBatchRequest $request): JsonResponse
-    {
-        $validated = $request->validated();
-
-        return DB::transaction(function () use ($validated) {
-            $batch = Batch::with(['customer', 'baskets', 'invoice'])->findOrFail($validated['batch_id']);
-
-            if ($batch->baskets->isEmpty()) {
-                return response()->json([
-                    'message' => 'No baskets found in this batch to dispatch.',
-                ], 422);
-            }
-
-            // Check if invoice is paid
-            if (!$batch->can_dispatch) {
-                return response()->json([
-                    'message' => 'Cannot dispatch batch. Invoice must be paid first.',
-                    'invoice_status' => $batch->invoice ? $batch->invoice->status : 'No invoice found',
-                    'can_dispatch' => $batch->can_dispatch
-                ], 422);
-            }
-
-            $dispatchedBaskets = [];
-            $invoices = [];
-            $histories = [];
-
-            foreach ($batch->baskets as $basket) {
-                // Create invoice for each basket
-                $invoice = Invoice::create([
-                    'customer_id' => $basket->customer_id,
-                    'barcode' => $basket->barcode,
-                    'unit_price' => $batch->unit_price,
-                    'total_amount' => $batch->unit_price,
-                ]);
-
-                // Create history record for each basket
-                $history = BasketHistory::create([
-                    'basket_id' => $basket->id,
-                    'customer_id' => $basket->customer_id,
-                    'batch_id' => $batch->id,
-                    'barcode' => $basket->barcode,
-                    'unit_price' => $batch->unit_price,
-                    'dispatched_at' => now(),
-                ]);
-
-                // Delete the basket
-                $basket->delete();
-
-                $dispatchedBaskets[] = [
-                    'barcode' => $basket->barcode,
-                    'unit_price' => $batch->unit_price,
-                ];
-
-                $invoices[] = $invoice;
-                $histories[] = $history;
-            }
-
-            // Update batch totals to zero since all baskets are dispatched
-            $batch->update([
-                'total_baskets' => 0,
-                'total_weight' => 0,
-                'total_value' => 0,
-            ]);
-
-            return response()->json([
-                'message' => 'Batch dispatched successfully. All baskets processed.',
-                'data' => [
-                    'batch' => $batch->fresh(),
-                    'dispatched_baskets' => $dispatchedBaskets,
-                    'total_invoices' => count($invoices),
-                    'total_histories' => count($histories),
-                ],
-            ]);
-        });
-    }
 
     public function getExpiringBatches(): JsonResponse
     {

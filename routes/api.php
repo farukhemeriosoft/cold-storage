@@ -47,14 +47,21 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/batches/expiring', [BasketController::class, 'getExpiringBatches']);
     Route::post('/batches', [BasketController::class, 'createBatch']);
     Route::post('/batches/{batch}/baskets', [BasketController::class, 'addBasketsToBatch']);
-    Route::post('/batches/{batch}/dispatch', [BasketController::class, 'dispatchBatch']);
-    Route::post('/baskets/dispatch', [BasketController::class, 'dispatch']);
 
     // Invoice management routes
     Route::get('/invoices/statistics', [InvoiceController::class, 'getStatistics']);
     Route::get('/invoices/unpaid/{customerId}', [InvoiceController::class, 'getUnpaidInvoices']);
     Route::get('/invoices/overdue', [InvoiceController::class, 'getOverdueInvoices']);
     Route::get('/invoices/due-soon', [InvoiceController::class, 'getDueSoonInvoices']);
+
+    // Dispatch management routes
+    Route::post('/dispatch/scan', [App\Http\Controllers\DispatchController::class, 'dispatchByBarcode']);
+    Route::post('/dispatch/{dispatchId}/complete', [App\Http\Controllers\DispatchController::class, 'completeDispatch']);
+    Route::get('/dispatch/pending-approvals', [App\Http\Controllers\DispatchController::class, 'getPendingApprovals']);
+    Route::post('/dispatch/{dispatchId}/approve', [App\Http\Controllers\DispatchController::class, 'approveDispatch']);
+    Route::get('/dispatch/history', [App\Http\Controllers\DispatchController::class, 'getDispatchHistory']);
+    Route::get('/dispatch/statistics', [App\Http\Controllers\DispatchController::class, 'getDispatchStats']);
+
     Route::apiResource('invoices', InvoiceController::class)->except(['create', 'edit']);
     Route::post('/batches/{batch}/invoice', [InvoiceController::class, 'createForBatch']);
     Route::patch('/invoices/{invoice}/cancel', [InvoiceController::class, 'cancel']);
@@ -67,3 +74,7 @@ Route::get('/invoices/{invoice}/payments', [PaymentController::class, 'getPaymen
 Route::get('/payments/statistics', [PaymentController::class, 'getStatistics']);
 Route::post('/payments/{payment}/refund', [PaymentController::class, 'refund']);
 });
+
+// Financial reports routes (temporarily without auth for testing)
+Route::get('/financial/reports', [App\Http\Controllers\FinancialController::class, 'getReports']);
+Route::post('/financial/export', [App\Http\Controllers\FinancialController::class, 'exportReport']);

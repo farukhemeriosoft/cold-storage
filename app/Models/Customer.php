@@ -45,6 +45,11 @@ class Customer extends Model
         return $this->hasMany(Batch::class);
     }
 
+    public function invoices()
+    {
+        return $this->hasMany(Invoice::class);
+    }
+
     /**
      * Scope a query to only include active customers.
      */
