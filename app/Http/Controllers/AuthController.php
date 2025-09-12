@@ -30,6 +30,14 @@ class AuthController extends Controller
 
         $token = $user->createToken('auth_token')->plainTextToken;
 
+        // Assign default role (staff) to new users
+        $defaultRole = \App\Models\Role::where('slug', 'staff')->first();
+        if ($defaultRole) {
+            $user->assignRole($defaultRole);
+        }
+
+        $user->load(['roles.permissions']);
+
         return response()->json([
             'message' => 'User registered successfully',
             'user' => $user,
@@ -50,6 +58,7 @@ class AuthController extends Controller
         }
 
         $user = User::where('email', $request->email)->firstOrFail();
+        $user->load(['roles.permissions']);
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
@@ -77,9 +86,12 @@ class AuthController extends Controller
      */
     public function me(Request $request): JsonResponse
     {
-        return response()->json([
-            'user' => $request->user()
-        ]);
+        $user = $request->user();
+
+        // Load user with roles and permissions
+        $userWithRoles = User::with(['roles.permissions'])->find($user->id);
+
+        return response()->json($userWithRoles);
     }
 
     /**
